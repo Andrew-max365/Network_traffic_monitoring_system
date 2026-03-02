@@ -4,12 +4,23 @@
 #include <ctype.h>
 
 void trim_whitespace(char *str) {
-    char *end;
-    while (isspace((unsigned char)*str)) str++;
-    if (*str == 0) return;
-    end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
+    if (!str || *str == '\0') return;
+
+    char *start = str;
+    while (isspace((unsigned char)*start)) start++;
+
+    if (*start == '\0') {
+        str[0] = '\0';
+        return;
+    }
+
+    char *end = start + strlen(start) - 1;
+    while (end > start && isspace((unsigned char)*end)) end--;
     end[1] = '\0';
+
+    if (start != str) {
+        memmove(str, start, strlen(start) + 1);
+    }
 }
 
 bool load_data_from_csv(const char *filename, Graph *g) {

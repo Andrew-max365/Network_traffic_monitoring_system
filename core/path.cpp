@@ -1,12 +1,37 @@
-#include "../include/graph.h"
+#include "../include/path.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <float.h>
 
 #define INF DBL_MAX
 
-// 1. 最小跳数查找 (BFS)
+static bool is_valid_node(Graph *g, int idx) {
+    return idx >= 0 && idx < g->count;
+}
+
+static void print_path(Graph *g, int *parent, int end) {
+    int path[MAX_NODES];
+    int len = 0;
+
+    for (int cur = end; cur != -1 && len < MAX_NODES; cur = parent[cur]) {
+        path[len++] = cur;
+    }
+
+    for (int i = len - 1; i >= 0; --i) {
+        printf("%s%s", g->nodes[path[i]].ip, (i == 0) ? "\n" : " -> ");
+    }
+}
+
+double get_edge_congestion(EdgeNode *e) {
+    if (!e || e->duration <= 0) return INF;
+    return (double)e->total_bytes / e->duration;
+}
+
 void find_min_hop_path(Graph *g, int start, int end) {
+    if (!is_valid_node(g, start) || !is_valid_node(g, end)) {
+        printf("节点索引无效。\n");
+        return;
+    }
+
     int parent[MAX_NODES];
     int dist[MAX_NODES];
     int queue[MAX_NODES], head = 0, tail = 0;
@@ -36,12 +61,16 @@ void find_min_hop_path(Graph *g, int start, int end) {
         printf("未找到路径。\n");
     } else {
         printf("最小跳数路径 (跳数: %d): ", dist[end]);
-        // 递归打印路径逻辑省略，实际需通过parent回溯
+        print_path(g, parent, end);
     }
 }
 
-// 2. 最小拥塞路径 (Dijkstra)
 void find_min_congestion_path(Graph *g, int start, int end) {
+    if (!is_valid_node(g, start) || !is_valid_node(g, end)) {
+        printf("节点索引无效。\n");
+        return;
+    }
+
     double dist[MAX_NODES];
     int parent[MAX_NODES];
     bool visited[MAX_NODES];
@@ -68,13 +97,19 @@ void find_min_congestion_path(Graph *g, int start, int end) {
         visited[u] = true;
 
         for (EdgeNode *e = g->nodes[u].first_edge; e; e = e->next) {
-            // 拥塞程度 = 流量 / 持续时间
-            double congestion = (e->duration > 0) ? (double)e->total_bytes / e->duration : 0;
+            double congestion = get_edge_congestion(e);
+            if (congestion == INF) continue;
             if (dist[u] + congestion < dist[e->dest_idx]) {
                 dist[e->dest_idx] = dist[u] + congestion;
                 parent[e->dest_idx] = u;
             }
         }
     }
-    printf("拥塞最小路径计算完成。\n");
+
+    if (dist[end] == INF) {
+        printf("未找到路径。\n");
+    } else {
+        printf("最小拥塞路径 (代价: %.2f): ", dist[end]);
+        print_path(g, parent, end);
+    }
 }
