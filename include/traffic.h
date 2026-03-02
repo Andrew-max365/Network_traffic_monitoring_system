@@ -1,8 +1,16 @@
-//
-// Created by 糊涂涂 on 2026/3/2.
-//
+#ifndef TRAFFIC_H
+#define TRAFFIC_H
+#include "graph.h"
 
-#ifndef NETWORK_TRAFFIC_MONITORING_SYSTEM_TRAFFIC_H
-#define NETWORK_TRAFFIC_MONITORING_SYSTEM_TRAFFIC_H
+// 排序结构体
+typedef struct {
+    int node_idx;
+    long traffic;
+} TrafficRank;
 
-#endif //NETWORK_TRAFFIC_MONITORING_SYSTEM_TRAFFIC_H
+void rank_all_nodes(Graph *g);              // 任务3.1: 节点流量排序 [cite: 82]
+void rank_https_nodes(Graph *g);            // 任务3.2: HTTPS筛选排序 [cite: 87]
+void detect_scanning(Graph *g);             // 任务3.2: 单向流量检测 [cite: 88]
+void find_star_topology(Graph *g);          // 扩展: 星型结构检测 [cite: 94]
+
+#endif

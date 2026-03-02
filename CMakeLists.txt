@@ -10,4 +10,6 @@ add_executable(Network_traffic_monitoring_system main.c
         core/main.cpp
         core/graph.cpp
         core/traffic.cpp
-        core/path.cpp)
+        core/path.cpp
+        core/utils.cpp
+        include/path.h)
