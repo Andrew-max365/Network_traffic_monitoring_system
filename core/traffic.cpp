@@ -1,48 +1,97 @@
 #include "../include/traffic.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
-// 辅助排序结构
-int compare_traffic(const void *a, const void *b) {
-    TrafficRank *r1 = (TrafficRank *)a;
-    TrafficRank *r2 = (TrafficRank *)b;
-    return (r2->traffic > r1->traffic) ? 1 : -1;
+static int compare_traffic(const void *a, const void *b) {
+    const TrafficRank *r1 = (const TrafficRank *)a;
+    const TrafficRank *r2 = (const TrafficRank *)b;
+    if (r2->traffic > r1->traffic) return 1;
+    if (r2->traffic < r1->traffic) return -1;
+    return 0;
 }
 
-// 任务 3.2: 筛选 HTTPS (TCP 协议编号6, 端口443) [cite: 87]
+static void print_rankings(Graph *g, TrafficRank *ranks, int count, const char *title) {
+    printf("--- %s ---\n", title);
+    if (count == 0) {
+        printf("无可展示数据。\n");
+        return;
+    }
+
+    qsort(ranks, count, sizeof(TrafficRank), compare_traffic);
+    for (int i = 0; i < count; ++i) {
+        int idx = ranks[i].node_idx;
+        printf("%2d. %s | 流量: %ld\n", i + 1, g->nodes[idx].ip, ranks[i].traffic);
+    }
+}
+
+void rank_all_nodes(Graph *g) {
+    TrafficRank ranks[MAX_NODES];
+    int r_count = 0;
+
+    for (int i = 0; i < g->count; i++) {
+        ranks[r_count].node_idx = i;
+        ranks[r_count].traffic = g->nodes[i].in_total + g->nodes[i].out_total;
+        r_count++;
+    }
+
+    print_rankings(g, ranks, r_count, "节点总流量排序");
+}
+
 void rank_https_nodes(Graph *g) {
     TrafficRank ranks[MAX_NODES];
     int r_count = 0;
 
     for (int i = 0; i < g->count; i++) {
-        bool has_https = false;
         long https_flow = 0;
         for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
-            // 假设在 add_session 时已在 p_stats 中记录了 HTTPS 特征
-            if (e->p_stats.tcp_bytes > 0) { // 简化判断逻辑
-                has_https = true;
-                https_flow += e->total_bytes;
-            }
+            https_flow += e->p_stats.tcp_bytes;
         }
-        if (has_https) {
+        if (https_flow > 0) {
             ranks[r_count].node_idx = i;
             ranks[r_count].traffic = https_flow;
             r_count++;
         }
     }
-    qsort(ranks, r_count, sizeof(TrafficRank), compare_traffic);
-    // 打印前 N 个 HTTPS 节点 [cite: 87]
+
+    print_rankings(g, ranks, r_count, "HTTPS(TCP)流量排序");
 }
 
-// 扩展任务：检测星型拓扑 [cite: 96]
+void detect_scanning(Graph *g) {
+    printf("--- 扫描行为检测 (单向流量>80%%) ---\n");
+    bool found = false;
+
+    for (int i = 0; i < g->count; i++) {
+        long in_total = g->nodes[i].in_total;
+        long out_total = g->nodes[i].out_total;
+        long total = in_total + out_total;
+        if (total == 0) continue;
+
+        long dominant = (in_total > out_total) ? in_total : out_total;
+        double ratio = (double)dominant / (double)total;
+        if (ratio > 0.8) {
+            found = true;
+            printf("可疑节点: %s | 入:%ld 出:%ld 占比:%.2f%%\n",
+                   g->nodes[i].ip, in_total, out_total, ratio * 100.0);
+        }
+    }
+
+    if (!found) {
+        printf("未发现明显扫描行为。\n");
+    }
+}
+
 void find_star_topology(Graph *g) {
     printf("--- 检测到的星型拓扑 ---\n");
+    bool found = false;
+
     for (int i = 0; i < g->count; i++) {
-        // 中心节点连接数 >= 20 [cite: 96]
         if (g->nodes[i].out_degree >= 20) {
+            found = true;
             printf("中心节点: %s | 连接节点数: %d\n", g->nodes[i].ip, g->nodes[i].out_degree);
-            // 遍历邻居，确保它们只与中心节点建立链接 [cite: 96]
         }
+    }
+
+    if (!found) {
+        printf("未检测到星型拓扑中心节点。\n");
     }
 }
