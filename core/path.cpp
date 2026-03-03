@@ -1,12 +1,38 @@
-#include "../include/graph.h"
+#include "../include/path.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <float.h>
+#include <string.h>
 
 #define INF DBL_MAX
 
-// 1. 最小跳数查找 (BFS)
+static bool is_valid_node(Graph *g, int idx) {
+    return idx >= 0 && idx < g->count;
+}
+
+static void print_path(Graph *g, int *parent, int end) {
+    int path[MAX_NODES];
+    int len = 0;
+
+    for (int cur = end; cur != -1 && len < MAX_NODES; cur = parent[cur]) {
+        path[len++] = cur;
+    }
+
+    for (int i = len - 1; i >= 0; --i) {
+        printf("%s%s", g->nodes[path[i]].ip, (i == 0) ? "\n" : " -> ");
+    }
+}
+
+double get_edge_congestion(EdgeNode *e) {
+    if (!e || e->duration <= 0) return INF;
+    return (double)e->total_bytes / e->duration;
+}
+
 void find_min_hop_path(Graph *g, int start, int end) {
+    if (!is_valid_node(g, start) || !is_valid_node(g, end)) {
+        printf("节点索引无效。\n");
+        return;
+    }
+
     int parent[MAX_NODES];
     int dist[MAX_NODES];
     int queue[MAX_NODES], head = 0, tail = 0;
@@ -36,12 +62,16 @@ void find_min_hop_path(Graph *g, int start, int end) {
         printf("未找到路径。\n");
     } else {
         printf("最小跳数路径 (跳数: %d): ", dist[end]);
-        // 递归打印路径逻辑省略，实际需通过parent回溯
+        print_path(g, parent, end);
     }
 }
 
-// 2. 最小拥塞路径 (Dijkstra)
 void find_min_congestion_path(Graph *g, int start, int end) {
+    if (!is_valid_node(g, start) || !is_valid_node(g, end)) {
+        printf("节点索引无效。\n");
+        return;
+    }
+
     double dist[MAX_NODES];
     int parent[MAX_NODES];
     bool visited[MAX_NODES];
@@ -68,13 +98,55 @@ void find_min_congestion_path(Graph *g, int start, int end) {
         visited[u] = true;
 
         for (EdgeNode *e = g->nodes[u].first_edge; e; e = e->next) {
-            // 拥塞程度 = 流量 / 持续时间
-            double congestion = (e->duration > 0) ? (double)e->total_bytes / e->duration : 0;
+            double congestion = get_edge_congestion(e);
+            if (congestion == INF) continue;
             if (dist[u] + congestion < dist[e->dest_idx]) {
                 dist[e->dest_idx] = dist[u] + congestion;
                 parent[e->dest_idx] = u;
             }
         }
     }
-    printf("拥塞最小路径计算完成。\n");
+
+    if (dist[end] == INF) {
+        printf("未找到路径。\n");
+    } else {
+        printf("最小拥塞路径 (代价: %.2f): ", dist[end]);
+        print_path(g, parent, end);
+    }
+}
+
+
+void print_path_result(Graph *g) {
+    char start_ip[MAX_IP_LEN];
+    char end_ip[MAX_IP_LEN];
+    int start_idx = -1;
+    int end_idx = -1;
+    printf("请输入源节点 IP 和目的节点 IP (空格分隔):");
+    // 使用 %s 读取字符串（IP 地址）
+    if (scanf("%s %s", start_ip, end_ip) == 2) {
+
+        // 在图中查找这两个 IP 对应的索引
+        for (int i = 0; i < g->count; i++) {
+            if (strcmp(g->nodes[i].ip, start_ip) == 0) {
+                start_idx = i;
+            }
+            if (strcmp(g->nodes[i].ip, end_ip) == 0) {
+                end_idx = i;
+            }
+        }
+
+        // 检查是否都找到了对应的节点
+        if (start_idx != -1 && end_idx != -1) {
+            find_min_hop_path(g, start_idx, end_idx);
+            find_min_congestion_path(g, start_idx, end_idx);
+        } else {
+            printf("错误：未在当前拓扑图中找到您输入的 IP 节点。\n");
+            if (start_idx == -1) printf(" -> 找不到源 IP: %s\n", start_ip);
+            if (end_idx == -1) printf(" -> 找不到目的 IP: %s\n", end_ip);
+        }
+    } else {
+        printf("输入格式错误。\n");
+        // 清空输入缓冲区，防止死循环
+        while (getchar() != '\n');
+    }
 }

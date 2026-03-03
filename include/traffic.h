@@ -12,5 +12,6 @@ void rank_all_nodes(Graph *g);              // 任务3.1: 节点流量排序 [ci
 void rank_https_nodes(Graph *g);            // 任务3.2: HTTPS筛选排序 [cite: 87]
 void detect_scanning(Graph *g);             // 任务3.2: 单向流量检测 [cite: 88]
 void find_star_topology(Graph *g);          // 扩展: 星型结构检测 [cite: 94]
+void check_security_rule(Graph *g);         // 拓展: 自定义的安全规则
 
 #endif
