@@ -18,7 +18,6 @@ static void print_rankings(Graph *g, TrafficRank *ranks, int count, const char *
         printf("无可展示数据。\n");
         return;
     }
-
     qsort(ranks, count, sizeof(TrafficRank), compare_traffic);
     for (int i = 0; i < 10 && i < count; ++i) {
         int idx = ranks[i].node_idx;
@@ -29,13 +28,11 @@ static void print_rankings(Graph *g, TrafficRank *ranks, int count, const char *
 void rank_all_nodes(Graph *g) {
     TrafficRank ranks[MAX_NODES];
     int r_count = 0;
-
     for (int i = 0; i < g->count; i++) {
         ranks[r_count].node_idx = i;
         ranks[r_count].traffic = g->nodes[i].in_total + g->nodes[i].out_total;
         r_count++;
     }
-
     print_rankings(g, ranks, r_count, "节点总流量排序");
 }
 
@@ -45,21 +42,15 @@ void rank_https_nodes(Graph *g) {
 
     for (int i = 0; i < g->count; i++) {
         long total_https_for_node = 0;
-
-        // 遍历当前 IP 发出的所有边
         for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
-            // 直接累加预处理好的 HTTPS 流量
             total_https_for_node += e->stats.https_bytes;
         }
-
-        // 只有产生过 HTTPS 流量的节点才进入排行榜
         if (total_https_for_node > 0) {
             ranks[r_count].node_idx = i;
             ranks[r_count].traffic = total_https_for_node;
             r_count++;
         }
     }
-
     print_rankings(g, ranks, r_count, "HTTPS (TCP:443) 流量排行榜");
 }
 
@@ -72,15 +63,12 @@ void detect_scanning(Graph *g) {
         long in_total = g->nodes[i].in_total;
         long out_total = g->nodes[i].out_total;
         long total = in_total + out_total;
-
         if (total == 0) continue;
 
-        // 核心修改：只计算“发出流量”的占比
         double out_ratio = (double)out_total / (double)total;
-
         if (out_ratio > 0.8) {
-            ranks[c_count].node_idx = i;       // 存下节点索引
-            ranks[c_count].traffic = total;    // 存下总流量（用于等会儿排序）
+            ranks[c_count].node_idx = i;
+            ranks[c_count].traffic = total;
             c_count++;
         }
     }
@@ -92,27 +80,96 @@ void detect_scanning(Graph *g) {
 
     qsort(ranks, c_count, sizeof(TrafficRank), compare_traffic);
 
-    // 打印结果
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 10 && i < c_count; i++) {
         int idx = ranks[i].node_idx;
-
-        // 通过索引从图里把数据拿出来重新算一下占比，用于打印
         long out_total = g->nodes[idx].out_total;
         long total = ranks[i].traffic;
         double out_ratio = (double)out_total / (double)total;
 
-        if (i <10) {
-            printf("%2d. 可疑扫描源: %-15s | 总流量: %10ld | 发出流量占比: %.2f%%\n",
-                   i + 1,
-                   g->nodes[idx].ip,
-                   total,
-                   out_ratio * 100.0);
-        }
+        printf("%2d. 可疑扫描源: %-15s | 总流量: %10ld | 发出流量占比: %.2f%%\n",
+               i + 1, g->nodes[idx].ip, total, out_ratio * 100.0);
     }
-    printf("总共可疑源共有：%d 个\n",c_count);
+    printf("总共可疑源共有：%d 个\n", c_count);
 }
 
+/* 严格星型结构:卫星结点只能与中心节点一个相连（不能有不是叶子节点的相邻节点）
+static bool has_edge(Graph *g, int from, int to) {
+    for (EdgeNode *e = g->nodes[from].first_edge; e; e = e->next) {
+        if (e->dest_idx == to) return true;
+    }
+    return false;
+}
 
+void find_star_topology(Graph *g) {
+    printf("--- 严格星型拓扑检测 ---\n");
+    bool found = false;
+
+    for (int center = 0; center < g->count; center++) {
+        // 先收集 center 的所有“唯一邻居”（有边相连即视为邻居，方向不敏感）
+        bool neighbor[MAX_NODES] = {false};
+        int leaf_count = 0;
+
+        // center -> x
+        for (EdgeNode *e = g->nodes[center].first_edge; e; e = e->next) {
+            if (!neighbor[e->dest_idx] && e->dest_idx != center) {
+                neighbor[e->dest_idx] = true;
+                leaf_count++;
+            }
+        }
+        // x -> center
+        for (int x = 0; x < g->count; x++) {
+            if (x == center) continue;
+            if (has_edge(g, x, center) && !neighbor[x]) {
+                neighbor[x] = true;
+                leaf_count++;
+            }
+        }
+
+        if (leaf_count < 20) continue;
+
+        // 严格条件：每个叶子只允许与 center 相连（不允许和其他节点有任何连边）
+        bool strict_ok = true;
+        for (int leaf = 0; leaf < g->count && strict_ok; leaf++) {
+            if (!neighbor[leaf]) continue;
+
+            // leaf -> y
+            for (EdgeNode *e = g->nodes[leaf].first_edge; e; e = e->next) {
+                int y = e->dest_idx;
+                if (y != center) {
+                    strict_ok = false;
+                    break;
+                }
+            }
+            if (!strict_ok) break;
+
+            // y -> leaf
+            for (int y = 0; y < g->count; y++) {
+                if (y == center || y == leaf) continue;
+                if (has_edge(g, y, leaf)) {
+                    strict_ok = false;
+                    break;
+                }
+            }
+        }
+
+        if (!strict_ok) continue;
+
+        found = true;
+        printf("中心节点: %s | 严格卫星节点数: %d\n", g->nodes[center].ip, leaf_count);
+        int printed = 0;
+        printf("               ");
+        for (int leaf = 0; leaf < g->count; leaf++) {
+            if (!neighbor[leaf]) continue;
+            printf("%s", g->nodes[leaf].ip);
+            printed++;
+            if (printed < leaf_count) printf(", ");
+            if (printed % 5 == 0 && printed < leaf_count) printf("\n          ");
+        }
+        printf("\n\n");
+    }
+
+    if (!found) printf("未检测到星型拓扑中心节点。\n");
+}  */
 
 void find_star_topology(Graph *g) {
     printf("--- 检测到的星型拓扑 ---\n");
@@ -233,5 +290,3 @@ void check_security_rule(Graph *g) {
     }
     printf("\n");
 }
-
-
