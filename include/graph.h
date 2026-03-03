@@ -10,15 +10,17 @@
 typedef struct {
     long tcp_bytes;
     long udp_bytes;
-    double total_duration;
-} ProtoStats;
+    long https_bytes;
+    double tcp_duration;   // TCP 会话总时长
+    double udp_duration;   // UDP 会话总时长
+} TrafficStats;
 
 // 邻接表边节点
 typedef struct EdgeNode {
-    int dest_idx;
-    long total_bytes;
+    int dest_idx;          // 目的 IP 的编号
+    long total_bytes;      // 边的总流量（所有协议之和）
     double duration;
-    ProtoStats p_stats;
+    TrafficStats stats;
     struct EdgeNode *next;
 } EdgeNode;
 
@@ -38,6 +40,6 @@ typedef struct {
 
 void init_graph(Graph *g);
 int get_or_create_node(Graph *g, const char *ip);
-void add_session(Graph *g, char *src, char *dst, int proto, long bytes, double duration);
+void add_session(Graph *g, char *src, char *dst, int proto,int src_port,int dst_port, long bytes, double duration);
 
 #endif

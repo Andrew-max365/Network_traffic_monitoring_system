@@ -1,6 +1,7 @@
 #include "../include/path.h"
 #include <stdio.h>
 #include <float.h>
+#include <string.h>
 
 #define INF DBL_MAX
 
@@ -111,5 +112,41 @@ void find_min_congestion_path(Graph *g, int start, int end) {
     } else {
         printf("最小拥塞路径 (代价: %.2f): ", dist[end]);
         print_path(g, parent, end);
+    }
+}
+
+
+void print_path_result(Graph *g) {
+    char start_ip[MAX_IP_LEN];
+    char end_ip[MAX_IP_LEN];
+    int start_idx = -1;
+    int end_idx = -1;
+    printf("请输入源节点 IP 和目的节点 IP (空格分隔):");
+    // 使用 %s 读取字符串（IP 地址）
+    if (scanf("%s %s", start_ip, end_ip) == 2) {
+
+        // 在图中查找这两个 IP 对应的索引
+        for (int i = 0; i < g->count; i++) {
+            if (strcmp(g->nodes[i].ip, start_ip) == 0) {
+                start_idx = i;
+            }
+            if (strcmp(g->nodes[i].ip, end_ip) == 0) {
+                end_idx = i;
+            }
+        }
+
+        // 检查是否都找到了对应的节点
+        if (start_idx != -1 && end_idx != -1) {
+            find_min_hop_path(g, start_idx, end_idx);
+            find_min_congestion_path(g, start_idx, end_idx);
+        } else {
+            printf("错误：未在当前拓扑图中找到您输入的 IP 节点。\n");
+            if (start_idx == -1) printf(" -> 找不到源 IP: %s\n", start_ip);
+            if (end_idx == -1) printf(" -> 找不到目的 IP: %s\n", end_ip);
+        }
+    } else {
+        printf("输入格式错误。\n");
+        // 清空输入缓冲区，防止死循环
+        while (getchar() != '\n');
     }
 }

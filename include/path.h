@@ -6,5 +6,6 @@
 void find_min_congestion_path(Graph *g, int start, int end);
 void find_min_hop_path(Graph *g, int start, int end);
 double get_edge_congestion(EdgeNode *e);
+void print_path_result(Graph *g);
 
 #endif
