@@ -92,7 +92,7 @@ void detect_scanning(Graph *g) {
     printf("总共可疑源共有：%d 个\n", c_count);
 }
 
-/* 严格星型结构:卫星结点只能与中心节点一个相连（不能有不是叶子节点的相邻节点）
+
 static bool has_edge(Graph *g, int from, int to) {
     for (EdgeNode *e = g->nodes[from].first_edge; e; e = e->next) {
         if (e->dest_idx == to) return true;
@@ -100,112 +100,124 @@ static bool has_edge(Graph *g, int from, int to) {
     return false;
 }
 
+// 灵活星型结构:卫星结点只能与中心节点一个相连（不能有不是叶子节点的相邻节点），但可以自己设置阈值k
 void find_star_topology(Graph *g) {
-    printf("--- 严格星型拓扑检测 ---\n");
+    int k;
+    if (scanf("%d", &k) != 1) {     // 仅读取数字
+        k = 0;    // 默认值
+        while (getchar() != '\n'); // 清理缓冲区
+    }
+    printf("--- 灵活星型拓扑检测 (允许 %d 个非叶子节点) ---\n", k);
     bool found = false;
 
     for (int center = 0; center < g->count; center++) {
-        // 先收集 center 的所有“唯一邻居”（有边相连即视为邻居，方向不敏感）
         bool neighbor[MAX_NODES] = {false};
-        int leaf_count = 0;
+        int neighbor_count = 0;
 
-        // center -> x
+        // 1. 识别中心节点的所有邻居 (方向不敏感)
         for (EdgeNode *e = g->nodes[center].first_edge; e; e = e->next) {
             if (!neighbor[e->dest_idx] && e->dest_idx != center) {
                 neighbor[e->dest_idx] = true;
-                leaf_count++;
+                neighbor_count++;
             }
         }
-        // x -> center
         for (int x = 0; x < g->count; x++) {
-            if (x == center) continue;
-            if (has_edge(g, x, center) && !neighbor[x]) {
+            if (x != center && has_edge(g, x, center) && !neighbor[x]) {
                 neighbor[x] = true;
-                leaf_count++;
+                neighbor_count++;
             }
         }
 
-        if (leaf_count < 20) continue;
+        // 基本规模过滤：邻居数需达到任务书要求的 20 个
+        if (neighbor_count < 20) continue;
 
-        // 严格条件：每个叶子只允许与 center 相连（不允许和其他节点有任何连边）
-        bool strict_ok = true;
-        for (int leaf = 0; leaf < g->count && strict_ok; leaf++) {
-            if (!neighbor[leaf]) continue;
+        // 2. 统计不满足“仅与中心节点相连”条件的邻居数量
+        int non_leaf_count = 0;
+        for (int i = 0; i < g->count; i++) {
+            if (!neighbor[i]) continue;
 
-            // leaf -> y
-            for (EdgeNode *e = g->nodes[leaf].first_edge; e; e = e->next) {
-                int y = e->dest_idx;
-                if (y != center) {
-                    strict_ok = false;
+            bool is_strict_leaf = true;
+            // 检查出边：是否连向了除中心外的其他节点
+            for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
+                if (e->dest_idx != center) {
+                    is_strict_leaf = false;
                     break;
                 }
             }
-            if (!strict_ok) break;
-
-            // y -> leaf
-            for (int y = 0; y < g->count; y++) {
-                if (y == center || y == leaf) continue;
-                if (has_edge(g, y, leaf)) {
-                    strict_ok = false;
-                    break;
-                }
-            }
-        }
-
-        if (!strict_ok) continue;
-
-        found = true;
-        printf("中心节点: %s | 严格卫星节点数: %d\n", g->nodes[center].ip, leaf_count);
-        int printed = 0;
-        printf("               ");
-        for (int leaf = 0; leaf < g->count; leaf++) {
-            if (!neighbor[leaf]) continue;
-            printf("%s", g->nodes[leaf].ip);
-            printed++;
-            if (printed < leaf_count) printf(", ");
-            if (printed % 5 == 0 && printed < leaf_count) printf("\n          ");
-        }
-        printf("\n\n");
-    }
-
-    if (!found) printf("未检测到星型拓扑中心节点。\n");
-}  */
-
-void find_star_topology(Graph *g) {
-    printf("--- 检测到的星型拓扑 ---\n");
-    bool found = false;
-
-    for (int i = 0; i < g->count; i++) {
-        if (g->nodes[i].out_degree >= 20) {
-            found = true;
-            printf("中心节点: %s | 连接节点数: %d :\n", g->nodes[i].ip, g->nodes[i].out_degree);
-            // 遍历该节点的所有出边
-            EdgeNode *e = g->nodes[i].first_edge;
-            int print_count = 0;
-            printf("               ");
-            while (e != NULL) {
-                // e->dest_idx 是目标节点在 nodes 数组中的索引
-                printf("%s", g->nodes[e->dest_idx].ip);
-
-                e = e->next;
-                print_count++;
-
-                if (e != NULL) {
-                    printf(", ");
-                    // 每打印 5 个 IP 换行一次，保持界面整洁
-                    if (print_count % 5 == 0) {
-                        printf("\n               ");
+            // 检查入边：是否有除中心外的其他节点连向它
+            if (is_strict_leaf) {
+                for (int y = 0; y < g->count; y++) {
+                    if (y != center && y != i && has_edge(g, y, i)) {
+                        is_strict_leaf = false;
+                        break;
                     }
                 }
             }
-            printf("\n\n"); // 这个中心节点打印完毕，留出空行
+
+            if (!is_strict_leaf) {
+                non_leaf_count++;
+            }
+        }
+
+        // 3. 灵活阈值判断
+        if (non_leaf_count <= k) {
+            found = true;
+            printf("[命中] 中心节点: %s | 总邻居数: %d | 违规邻居数: %d\n",
+                   g->nodes[center].ip, neighbor_count, non_leaf_count);
+
+            // 打印结果格式微调，符合任务书输出要求
+            printf("               ");
+            int printed = 0;
+            for (int i = 0; i < g->count; i++) {
+                if (neighbor[i]) {
+                    printf("%s", g->nodes[i].ip);
+                    if (++printed < neighbor_count) printf(", ");
+                    if (printed % 5 == 0 && printed < neighbor_count) printf("\n               ");
+                }
+            }
+            printf("\n\n");
         }
     }
 
-    if (!found) {
-        printf("未检测到星型拓扑中心节点。\n");
-    }
+    if (!found) printf("未检测到符合条件的星型拓扑。\n");
 }
+
+// 宽松版本的判定逻辑只依赖于中心节点的出度
+// void find_star_topology(Graph *g) {
+//     printf("--- 检测到的星型拓扑 ---\n");
+//     bool found = false;
+//
+//     for (int i = 0; i < g->count; i++) {
+//         if (g->nodes[i].out_degree >= 20) {
+//             found = true;
+//             printf("中心节点: %s | 连接节点数: %d :\n", g->nodes[i].ip, g->nodes[i].out_degree);
+//             // 遍历该节点的所有出边
+//             EdgeNode *e = g->nodes[i].first_edge;
+//             int print_count = 0;
+//             printf("               ");
+//             while (e != NULL) {
+//                 // e->dest_idx 是目标节点在 nodes 数组中的索引
+//                 printf("%s", g->nodes[e->dest_idx].ip);
+//
+//                 e = e->next;
+//                 print_count++;
+//
+//                 if (e != NULL) {
+//                     printf(", ");
+//                     // 每打印 5 个 IP 换行一次，保持界面整洁
+//                     if (print_count % 5 == 0) {
+//                         printf("\n               ");
+//                     }
+//                 }
+//             }
+//             printf("\n\n"); // 这个中心节点打印完毕，留出空行
+//         }
+//     }
+//
+//     if (!found) {
+//         printf("未检测到星型拓扑中心节点。\n");
+//     }
+// }
 
 
 static uint32_t ip_to_uint32(const char *ip_str) {
@@ -226,15 +238,8 @@ void check_security_rule(Graph *g) {
     char range_start[MAX_IP_LEN];
     char range_end[MAX_IP_LEN];
 
-    printf("\n--- 配置 IP 安全检测规则 ---\n");
-
-    printf("请输入目标节点 IP (例如 192.168.1.50): ");
     scanf("%s", target_ip);
-
-    printf("请输入限制区间的起始 IP (例如 10.0.0.1): ");
     scanf("%s", range_start);
-
-    printf("请输入限制区间的结束 IP (例如 10.0.0.255): ");
     scanf("%s", range_end);
 
     // 将输入的字符串转换成数字形式

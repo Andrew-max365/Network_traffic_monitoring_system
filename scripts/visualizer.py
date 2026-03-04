@@ -5,125 +5,81 @@ import sys
 import os
 import webbrowser
 import math
-import json  # 导入 json 模块用于安全转换配置
+import json
 
 def generate_visual(target_ip):
-    # 路径处理
+    # 1. 路径处理，直接读取 C 程序刚吐出来的子图文件
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    csv_path = os.path.join(project_root, "data", "network_data.csv")
+    csv_path = os.path.join(project_root, "data", "subgraph_edges.csv")
     output_html = os.path.join(project_root, "data", "subgraph.html")
 
-    print(f"[*] 正在分析节点: {target_ip}")
+    print(f"[*] 前端渲染引擎启动: 渲染目标 {target_ip} 的连通子图")
 
     if not os.path.exists(csv_path):
-        print(f"[-] 错误: 找不到数据文件 {csv_path}")
+        print(f"[-] 错误: 找不到 C 程序生成的子图文件 {csv_path}")
         return
 
     try:
+        # 2. 读取提纯好的子图数据
         df = pd.read_csv(csv_path)
 
-        required = ['Source', 'Destination', 'Protocol', 'DstPort', 'DataSize']
-        for c in required:
-            if c not in df.columns:
-                print(f"[-] 错误: 缺少列 {c}")
-                return
-
-        # 类型归一化
-        df['Protocol'] = pd.to_numeric(df['Protocol'], errors='coerce')
-        df['DstPort'] = pd.to_numeric(df['DstPort'], errors='coerce')
-        df['DataSize'] = pd.to_numeric(df['DataSize'], errors='coerce').fillna(0)
-
-        # 只取目标IP相关的一阶子图
-        sub_df = df[(df['Source'] == target_ip) | (df['Destination'] == target_ip)].copy()
-        if sub_df.empty:
-            print(f"[-] 警告: 流量库中没有关于 {target_ip} 的记录")
+        if df.empty:
+            print(f"[-] 警告: {target_ip} 的连通子图为空")
             return
-
-        # 按方向聚合
-        agg = (
-            sub_df
-            .groupby(['Source', 'Destination'], as_index=False)
-            .agg(
-                total_bytes=('DataSize', 'sum'),
-                pkt_count=('DataSize', 'count'),
-                https_bytes=('DataSize', lambda s: 0.0)
-            )
-        )
-
-        # 重新计算每条有向边的 HTTPS 字节
-        https_df = sub_df[(sub_df['Protocol'] == 6) & (sub_df['DstPort'] == 443)]
-        https_agg = (
-            https_df
-            .groupby(['Source', 'Destination'], as_index=False)
-            .agg(https_bytes=('DataSize', 'sum'))
-        )
-
-        agg = agg.drop(columns=['https_bytes']).merge(
-            https_agg, how='left', on=['Source', 'Destination']
-        )
-        agg['https_bytes'] = agg['https_bytes'].fillna(0.0)
 
         G = nx.DiGraph()
 
-        # 节点统计
+        # 3. 统计该子图中各节点的总流量，用于计算气泡大小
         node_total = {}
-        for _, r in agg.iterrows():
+        for _, r in df.iterrows():
             src, dst = str(r['Source']), str(r['Destination'])
-            b = float(r['total_bytes'])
+            b = float(r['TotalBytes'])
             node_total[src] = node_total.get(src, 0.0) + b
             node_total[dst] = node_total.get(dst, 0.0) + b
 
-        # 加节点
+        # 4. 将节点加入网络图
         for n, total_b in node_total.items():
             if n == target_ip:
                 color = "#ffd166"
                 size = 32
-                title = f"<b>{n}</b><br/>中心节点<br/>相关总流量: {int(total_b)} bytes"
+                title = f"<b>{n}</b><br/>核心查询节点<br/>相关总流量: {int(total_b)} bytes"
             else:
                 color = "#97c2fc"
                 size = 12 + min(18, math.log10(total_b + 1) * 4)
                 title = f"{n}<br/>相关总流量: {int(total_b)} bytes"
             G.add_node(n, color=color, size=size, title=title)
 
-        # 加边
-        for _, r in agg.iterrows():
+        # 5. 将边加入网络图
+        for _, r in df.iterrows():
             src, dst = str(r['Source']), str(r['Destination'])
-            total_b = float(r['total_bytes'])
-            pkt_c = int(r['pkt_count'])
-            https_b = float(r['https_bytes'])
+            total_b = float(r['TotalBytes'])
+            https_b = float(r['HttpsBytes'])
+            duration = float(r['Duration'])
 
             is_https_heavy = https_b > 0
             color = "#ff4d4d" if is_https_heavy else "#4da6ff"
 
             title = (
                 f"{src} -> {dst}<br/>"
-                f"总流量: {int(total_b)} bytes<br/>"
-                f"记录条数: {pkt_c}<br/>"
-                f"HTTPS字节(TCP&&DstPort=443): {int(https_b)}"
+                f"会话总流量: {int(total_b)} bytes<br/>"
+                f"包含 HTTPS 字节: {int(https_b)}<br/>"
+                f"总时长: {duration:.3f} 秒"
             )
 
-            # --- 修改：使用 value 属性让 pyvis 自动处理粗细 ---
             G.add_edge(
                 src, dst,
                 color=color,
-                value=total_b,  # 这里的 value 会被 scaling 映射到粗细
+                value=total_b,  # 用于边宽自动缩放
                 title=title,
                 arrows="to",
                 smooth={"type": "curvedCW", "roundness": 0.08}
             )
 
-        net = Network(
-            height="860px",
-            width="100%",
-            bgcolor="#111111",
-            font_color="white",
-            directed=True
-        )
-
+        # 6. 配置物理引擎选项 (继承您原来的优秀配置)
+        net = Network(height="860px", width="100%", bgcolor="#111111", font_color="white", directed=True)
         net.from_nx(G)
 
-        # 使用 Python 字典定义配置，避免 JSON 解析错误
         visual_options = {
             "nodes": {
                 "shape": "dot",
@@ -131,52 +87,41 @@ def generate_visual(target_ip):
                 "borderWidth": 1.5
             },
             "edges": {
-                "scaling": {
-                    "min": 1,      # 最小流量宽度
-                    "max": 10,     # 最大流量宽度 (可以根据需要调大)
-                    "label": False
-                },
+                "scaling": {"min": 1, "max": 10, "label": False},
                 "smooth": {"enabled": True, "type": "dynamic"},
                 "color": {"inherit": False},
                 "selectionWidth": 2
             },
-            "interaction": {
-                "hover": True,
-                "tooltipDelay": 120,
-                "navigationButtons": True,
-                "keyboard": True
-            },
             "physics": {
                 "enabled": True,
-                "solver": "forceAtlas2Based",
-                "forceAtlas2Based": {
-                    "gravitationalConstant": -55,
-                    "centralGravity": 0.01,
-                    "springLength": 120,
-                    "springConstant": 0.07,
-                    "damping": 0.45,
-                    "avoidOverlap": 0.7
+                "solver": "barnesHut",
+                "barnesHut": {
+                    "gravitationalConstant": -20000,  # 负值越大排斥越强，这个值能让节点撑开但不至于飞走
+                    "centralGravity": 0.05,           # 适当加强向心力，把节点束缚在中心附近，产生凝聚感
+                    "springLength": 125,              # 增加弹簧长度，给节点游走留出空间
+                    "springConstant": 0.1,            # 极软的弹簧，让动作像在水里一样慢条斯理
+                    "damping": 0.5,                   # 适中的阻尼，能有效吸收“爆炸”动能，防止震荡
+                    "avoidOverlap": 0.5
                 },
+                "maxVelocity": 3,                    # 限制最大速度，杜绝任何瞬时的剧烈跳动
+                "minVelocity": 0.01,                 # 极低的停止阈值，确保即使在很慢时引擎也不休眠
                 "stabilization": {
                     "enabled": True,
-                    "iterations": 1200,
-                    "updateInterval": 50
+                    "iterations": 600,               # 【核心修改】3 秒左右的预计算
+                    "updateInterval": 10
                 }
             }
         }
 
-        # 将字典转换为 JSON 字符串传入，解决报错问题
         net.set_options(json.dumps(visual_options))
-
         abs_html_path = os.path.abspath(output_html)
         net.write_html(abs_html_path)
 
-        print(f"[+] 已生成子图: {abs_html_path}")
+        print(f"[+] 渲染完毕！已自动打开浏览器...")
         webbrowser.open("file://" + abs_html_path)
 
     except Exception as e:
         print(f"[-] 脚本运行异常: {str(e)}")
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
