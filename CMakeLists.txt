@@ -11,8 +11,8 @@ add_executable(Network_traffic_monitoring_system
     core/traffic.cpp
     core/path.cpp
     core/utils.cpp
-        include/dsu.h
-        core/dsu.cpp
+    include/dsu.h
+    core/dsu.cpp
 )
 
 target_include_directories(Network_traffic_monitoring_system PRIVATE include)
