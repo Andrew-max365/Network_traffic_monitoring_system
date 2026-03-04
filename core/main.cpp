@@ -35,17 +35,19 @@ int main(int argc, char* argv[]) {
         }
 
         switch (choice) {
-            case 1:
-                // 重载前先清理旧图，避免内存泄漏
-                free_graph(&myGraph);
-                init_graph(&myGraph);
-
-                if (load_data_from_csv(filename, &myGraph)) {
-                    printf("[成功] 已从 %s 加载并构建图结构。\n", filename);
-                } else {
-                    printf("[错误] 找不到或无法打开文件: %s\n", filename);
+            case 1: {
+                char dynamic_filename[256];
+                if (scanf("%255s", dynamic_filename) == 1) {
+                    free_graph(&myGraph);
+                    init_graph(&myGraph);
+                    if (load_data_from_csv(dynamic_filename, &myGraph)) {
+                        printf("[成功] 已从 %s 加载并构建图结构。\n", dynamic_filename);
+                    } else {
+                        printf("[错误] 找不到或无法打开文件: %s\n", dynamic_filename);
+                    }
                 }
                 break;
+            }
             case 2: rank_all_nodes(&myGraph); break;
             case 3: rank_https_nodes(&myGraph); break;
             case 4: detect_scanning(&myGraph); break;
@@ -67,6 +69,15 @@ int main(int argc, char* argv[]) {
                     fflush(stdout);
                     system(cmd);
                 }
+                break;
+            case 10: // 【创新：风险评估】
+                printf("\n>>> 正在启动多维节点安全风险评估...\n");
+                compute_all_risk_scores(&myGraph); // 调用 graph.cpp 里的算法
+                printf("[分析结果] 已完成全网画像统计。请通过“交互式图可视化”查看效果。\n");
+                fflush(stdout);
+                break;
+            case 11:
+                profile_node_roles(&myGraph);
                 break;
             case 0:
                 free_graph(&myGraph);

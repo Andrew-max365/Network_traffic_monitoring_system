@@ -151,7 +151,7 @@ void extract_subgraph_by_ip(Graph *g, const char *target_ip) {
     }
 
     // 写入表头，我们直接写入汇总好的数据，减轻 Python 端的压力
-    fprintf(fp, "Source,Destination,TotalBytes,HttpsBytes,Duration\n");
+    fprintf(fp, "Source,Destination,TotalBytes,HttpsBytes,Duration,SourceRisk,DestRisk\n");
 
     int edge_count = 0;
     int node_count = 0;
@@ -161,12 +161,15 @@ void extract_subgraph_by_ip(Graph *g, const char *target_ip) {
         if (dsu_find(parent, i) == target_root) {
             node_count++;
             for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
-                fprintf(fp, "%s,%s,%ld,%ld,%.3f\n",
+                fprintf(fp, "%s,%s,%ld,%ld,%.3f,%d,%d\n",
                         g->nodes[i].ip,
                         g->nodes[e->dest_idx].ip,
                         e->total_bytes,
                         e->stats.https_bytes,
-                        e->duration);
+                        e->duration,
+                        g->nodes[i].risk_score,      // 源节点风险分
+                        g->nodes[e->dest_idx].risk_score // 目的节点风险分
+                        );
                 edge_count++;
             }
         }
@@ -175,4 +178,60 @@ void extract_subgraph_by_ip(Graph *g, const char *target_ip) {
     printf("[+] 并查集划分完成！\n");
     printf("    中心节点 [%s] 所在的连通子图共包含 %d 个节点，%d 条边。\n", target_ip, node_count, edge_count);
     printf("    已导出至: data/subgraph_edges.csv\n");
+}
+
+
+void compute_all_risk_scores(Graph *g) {
+    if (g->count == 0) return;
+
+    // 1. 初始化分数
+    for (int i = 0; i < g->count; i++) {
+        g->nodes[i].risk_score = 0;
+    }
+
+    // 计算全网平均流量作为基准
+    long total_net_traffic = 0;
+    for (int i = 0; i < g->count; i++) total_net_traffic += (g->nodes[i].in_total + g->nodes[i].out_total);
+    long avg_traffic = total_net_traffic / g->count;
+
+    for (int i = 0; i < g->count; i++) {
+        int score = 0;
+        double out_ratio = (g->nodes[i].out_total + g->nodes[i].in_total > 0) ?
+                           (double)g->nodes[i].out_total / (g->nodes[i].out_total + g->nodes[i].in_total) : 0;
+
+        // --- 维度 1：扫描行为（最严重的安全威胁） ---
+        if (g->nodes[i].out_degree > 50 && out_ratio > 0.95) {
+            score += 75; // 确定性扫描源，直接变红
+        } else if (g->nodes[i].out_degree > 20 && out_ratio > 0.7) {
+            score += 40; // 疑似扫描行为
+        }
+
+        // --- 维度 2：数据泄露风险（异常外发） ---
+        // 外发流量超过 1MB 且 外发比例超过入向 10 倍
+        if (g->nodes[i].out_total > 1048576 && out_ratio > 0.9) {
+            score += 50;
+        }
+
+        // --- 维度 3：拓扑重要性（攻击影响面） ---
+        // 复用之前的邻居统计逻辑
+        int neighbor_count = 0;
+        bool neighbor[MAX_NODES] = {false};
+        for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
+            if (!neighbor[e->dest_idx]) { neighbor[e->dest_idx] = true; neighbor_count++; }
+        }
+        if (neighbor_count > 30) {
+            score += 35; // 核心节点，一旦失陷影响极大
+        }
+
+        // --- 维度 4：异常流量大户 ---
+        if ((g->nodes[i].in_total + g->nodes[i].out_total) > avg_traffic * 10) {
+            score += 20;
+        }
+
+        // 最终得分封顶 100
+        g->nodes[i].risk_score = (score > 100) ? 100 : score;
+    }
+
+    printf("[报告] 多维风险建模完成：已识别风险节点并更新评分矩阵。\n");
+    fflush(stdout);
 }

@@ -33,6 +33,7 @@ typedef struct {
     long in_total;  // 入向总流量
     long out_total; // 出向总流量
     int out_degree; // 出度，用于拓扑分析
+    int risk_score; // 风险评分
 } Vertex;
 
 typedef struct {
@@ -45,5 +46,6 @@ void free_graph(Graph *g);  // 释放邻接表内存
 int get_or_create_node(Graph *g, const char *ip);
 void add_session(Graph *g, char *src, char *dst, int proto,int src_port,int dst_port, long bytes, double duration);
 void extract_subgraph_by_ip(Graph *g, const char *target_ip);
+void compute_all_risk_scores(Graph *g);
 
 #endif
