@@ -44,5 +44,6 @@ void init_graph(Graph *g);
 void free_graph(Graph *g);  // 释放邻接表内存
 int get_or_create_node(Graph *g, const char *ip);
 void add_session(Graph *g, char *src, char *dst, int proto,int src_port,int dst_port, long bytes, double duration);
+void extract_subgraph_by_ip(Graph *g, const char *target_ip);
 
 #endif

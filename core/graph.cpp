@@ -1,6 +1,7 @@
 #include "../include/graph.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 void init_graph(Graph *g) { g->count = 0; }
 
@@ -88,4 +89,90 @@ void add_session(Graph *g, char *src, char *dst, int proto, int src_port, int ds
     new_e->next = g->nodes[u].first_edge;
     g->nodes[u].first_edge = new_e;
     g->nodes[u].out_degree++;
+}
+
+// ==========================================
+// 并查集 (DSU) 与子图提取模块
+// ==========================================
+
+// 1. 并查集查找函数（带路径压缩优化）
+static int dsu_find(int *parent, int i) {
+    if (parent[i] == i)
+        return i;
+    return parent[i] = dsu_find(parent, parent[i]);
+}
+
+// 2. 并查集合并函数
+static void dsu_union(int *parent, int i, int j) {
+    int root_i = dsu_find(parent, i);
+    int root_j = dsu_find(parent, j);
+    if (root_i != root_j) {
+        parent[root_i] = root_j; // 合并两个连通分量
+    }
+}
+
+// 3. 提取连通子图并导出为 CSV
+void extract_subgraph_by_ip(Graph *g, const char *target_ip) {
+    int target_idx = -1;
+    // 寻找目标IP在图中的索引
+    for (int i = 0; i < g->count; i++) {
+        if (strcmp(g->nodes[i].ip, target_ip) == 0) {
+            target_idx = i;
+            break;
+        }
+    }
+
+    if (target_idx == -1) {
+        printf("[-] 未在图结构中找到节点: %s\n", target_ip);
+        return;
+    }
+
+    // 初始化并查集：每个节点的父节点最初都是自己
+    int parent[MAX_NODES];
+    for (int i = 0; i < g->count; i++) {
+        parent[i] = i;
+    }
+
+    // 遍历图中的所有边，将有通信关系的节点合并到同一个集合（无向连通分量）
+    for (int i = 0; i < g->count; i++) {
+        for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
+            dsu_union(parent, i, e->dest_idx);
+        }
+    }
+
+    // 找到目标节点所属的集合根节点
+    int target_root = dsu_find(parent, target_idx);
+
+    // 将属于该连通分量的所有边导出到专用的子图文件
+    FILE *fp = fopen("data/subgraph_edges.csv", "w");
+    if (!fp) {
+        printf("[-] 无法创建子图数据文件。\n");
+        return;
+    }
+
+    // 写入表头，我们直接写入汇总好的数据，减轻 Python 端的压力
+    fprintf(fp, "Source,Destination,TotalBytes,HttpsBytes,Duration\n");
+
+    int edge_count = 0;
+    int node_count = 0;
+
+    // 再次遍历全图，如果节点的根节点是 target_root，说明在同一个子图里
+    for (int i = 0; i < g->count; i++) {
+        if (dsu_find(parent, i) == target_root) {
+            node_count++;
+            for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
+                fprintf(fp, "%s,%s,%ld,%ld,%.3f\n",
+                        g->nodes[i].ip,
+                        g->nodes[e->dest_idx].ip,
+                        e->total_bytes,
+                        e->stats.https_bytes,
+                        e->duration);
+                edge_count++;
+            }
+        }
+    }
+    fclose(fp);
+    printf("[+] 并查集划分完成！\n");
+    printf("    中心节点 [%s] 所在的连通子图共包含 %d 个节点，%d 条边。\n", target_ip, node_count, edge_count);
+    printf("    已导出至: data/subgraph_edges.csv\n");
 }

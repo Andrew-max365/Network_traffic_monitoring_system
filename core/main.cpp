@@ -58,6 +58,9 @@ int main(int argc, char* argv[]) {
                 break;
             case 9:
                 if (scanf("%49s", target_ip) == 1) { // 限宽防溢出
+                    // 调用并查集函数，生成子图数据
+                    extract_subgraph_by_ip(&myGraph, target_ip);
+                    // 启动 Python 渲染引擎
                     char cmd[512];
                     sprintf(cmd, ".venv\\Scripts\\python.exe scripts/visualizer.py %s", target_ip);
                     printf("[系统] 正在调用可视化引擎，请查看浏览器弹窗...\n");

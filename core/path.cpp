@@ -59,7 +59,7 @@ void find_min_hop_path(Graph *g, int start, int end) {
     }
 
     if (dist[end] == -1) {
-        printf("未找到路径。\n");
+        printf("未找到最小跳数路径。\n");
     } else {
         printf("最小跳数路径 (跳数: %d): ", dist[end]);
         print_path(g, parent, end);
@@ -108,7 +108,7 @@ void find_min_congestion_path(Graph *g, int start, int end) {
     }
 
     if (dist[end] == INF) {
-        printf("未找到路径。\n");
+        printf("未找到最小拥塞路径。\n");
     } else {
         printf("最小拥塞路径 (代价: %.2f): ", dist[end]);
         print_path(g, parent, end);
@@ -121,7 +121,6 @@ void print_path_result(Graph *g) {
     char end_ip[MAX_IP_LEN];
     int start_idx = -1;
     int end_idx = -1;
-    printf("请输入源节点 IP 和目的节点 IP (空格分隔):");
     // 使用 %s 读取字符串（IP 地址）
     if (scanf("%s %s", start_ip, end_ip) == 2) {
 
