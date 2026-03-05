@@ -49,6 +49,7 @@ void add_session(Graph *g, char *src, char *dst, int proto, int src_port, int ds
         if (p->dest_idx == v) {
             p->total_bytes += bytes;
             p->duration += duration;
+            p->session_count++;
 
             if (proto == 6) {
                 p->stats.tcp_bytes += bytes;
@@ -73,6 +74,7 @@ void add_session(Graph *g, char *src, char *dst, int proto, int src_port, int ds
     new_e->dest_idx = v;
     new_e->total_bytes = bytes;
     new_e->duration = duration;
+    new_e->session_count = 1;
 
     if (proto == 6) {
         new_e->stats.tcp_bytes = bytes;

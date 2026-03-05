@@ -297,7 +297,7 @@ void check_security_rule(Graph *g) {
 }
 
 void profile_node_roles(Graph *g) {
-    printf("--- 资产角色画像分析 (Node Profiling) ---\n");
+    printf("--- 节点类型分析 ---\n");
     if (g->count == 0) {
         printf("[-] 图数据为空，请先加载流量数据。\n");
         return;
@@ -331,6 +331,21 @@ void profile_node_roles(Graph *g) {
         char reason[100] = "行为特征符合标准端点设备";
         bool is_special = false;
 
+        // 遍历该节点发出的所有边，检查是否存在“单点针对性扫描”
+        bool is_targeted_scanner = false;
+        int target_ports = 0;
+        double target_avg_bytes = 0;
+
+        for (EdgeNode *e = v->first_edge; e; e = e->next) {
+            // 核心判定：对单一目标IP发起了超过 15 个不同端口/会话的连接，且平均每次交互数据量极小 (< 500B)
+            if (e->session_count >= 15 && (e->total_bytes / e->session_count) < 500) {
+                is_targeted_scanner = true;
+                target_ports = e->session_count;
+                target_avg_bytes = (double)e->total_bytes / e->session_count;
+                break; // 只要发现针对某一个IP的爆破，就定性为扫描器
+            }
+        }
+
         // 规则1：核心业务服务器 (Server)
         // 判定逻辑：被大量独立主机连接 (in_deg >= 10)，且产生了实质性的业务数据交互（总流量 > 100KB）
         // 这样就保护了正常的业务服务器不被误判。
@@ -338,6 +353,13 @@ void profile_node_roles(Graph *g) {
             strcpy(role, "[*] 核心服务器 (Server)");
             sprintf(reason, "高频被连(%d次), 承担高吞吐业务(%.2f MB)", in_deg, total_bytes / 1048576.0);
             server_count++;
+            is_special = true;
+        }
+        // 【新增规则】：针对性端口扫描器 (Port Scanner) —— 你的 Nmap 行为将被这里完美捕获
+        else if (is_targeted_scanner) {
+            strcpy(role, "[!] 针对性扫描器 (Port Scanner)");
+            sprintf(reason, "单点爆破扫描 (针对单IP探测 %d 次, 均载 %.1f B)", target_ports, target_avg_bytes);
+            scanner_count++;
             is_special = true;
         }
         // 规则2：疑似恶意扫描器 (Scanner)
@@ -349,6 +371,7 @@ void profile_node_roles(Graph *g) {
             scanner_count++;
             is_special = true;
         }
+
         // 规则3：P2P节点 / 核心路由网关 (Hub)
         // 判定逻辑：进出方向的连接数都比较高，属于网络结构中的交通枢纽
         else if (in_deg >= 5 && out_deg >= 5) {
