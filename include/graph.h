@@ -22,6 +22,7 @@ typedef struct EdgeNode {
     int dest_idx;          // 目的 IP 的编号
     long total_bytes;      // 边的总流量（所有协议之和）
     double duration;
+    int session_count;
     TrafficStats stats;
     struct EdgeNode *next;
 } EdgeNode;
