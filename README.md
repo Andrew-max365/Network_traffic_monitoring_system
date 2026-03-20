@@ -46,17 +46,34 @@
 
 ```text
 .
-├── cmake-build-debug/     # C++ 编译目标文件夹 (存放可执行文件)
-├── data/                  # 数据池 (存放 real_data.pcap, pcap_data.csv 及生成的 HTML 报告)
-├── include/               # C++ 核心库头文件 (.h)
-├── scripts/               # Python 工具链脚本
-│   ├── visualizer.py      # Pyvis 交互式拓扑渲染引擎
-│   └── pcap_extractor.py  # PCAP 离线数据清洗与提取工具
-├── core/                  # C++ 业务逻辑层 (.cpp)
-│   ├── main.cpp           # 后端指令调度守护进程
-│   ├── traffic.cpp        # 流量审计、资产画像与规则分析
-│   ├── graph.cpp          # 图构建、风险评估及并查集子图划分
-│   └── utils.cpp          # CSV 解析与数据装载
-├── gui/                   # 图形化前端目录
-│   └── main_ui.py         # Sentinel Dashboard (GUI 主程序)
-└── README.md
+├── cmake-build-debug/        # C++ 编译目标文件夹 (存放生成的 Network_traffic_monitoring_system.exe)
+├── data/                     # 数据池
+│   ├── real_data.pcap        # 原始网络抓包文件
+│   ├── pcap_data.csv         # 经脚本提取后的结构化会话数据
+│   ├── network_data.csv      # 系统默认加载的演示数据集
+│   ├── ui_bridge.log         # 前后端交互日志文件 (用于 GUI 实时显示)
+│   ├── subgraph_edges.csv    # 可视化引擎所需的子图中间数据
+│   └── subgraph.html         # 生成的交互式拓扑可视化报告
+├── include/                  # C++ 核心库头文件 (.h)
+│   ├── graph.h               # 图结构与风险评估定义
+│   ├── traffic.h             # 流量审计与协议分析定义
+│   ├── path.h                # 路径规划算法定义
+│   ├── utils.h               # 数据装载工具定义
+│   └── dsu.h                 # 并查集算法定义 (用于子图提取)
+├── core/                     # C++ 业务逻辑层 (.cpp)
+│   ├── main.cpp              # 后端指令调度守护进程
+│   ├── graph.cpp             # 图构建及多维风险评估算法实现
+│   ├── traffic.cpp           # 扫描检测及资产角色画像实现
+│   ├── path.cpp              # BFS 与 Dijkstra 路径搜索实现
+│   ├── utils.cpp             # 高性能 CSV 解析逻辑
+│   └── dsu.cpp               # 并查集逻辑实现
+├── gui/                      # 图形化前端目录
+│   └── main_ui.py            # Sentinel Dashboard (基于 CustomTkinter 的 GUI 主程序)
+├── lib/                      # 可视化静态资源库 (存放 vis.js 和 tom-select 等前端依赖)
+├── scripts/                  # Python 工具链脚本
+│   ├── visualizer.py         # 基于 Pyvis 的交互式安全画像渲染引擎
+│   └── pcap_extractor.py     # 基于 Scapy 的 PCAP 流量特征提取工具
+├── CMakeLists.txt            # C++ 项目构建配置文件
+├── requirements.txt          # Python 第三方依赖库清单
+├── setup.bat                 # Windows 环境一键安装与配置脚本
+└── README.md                 # 项目详细设计说明文档
