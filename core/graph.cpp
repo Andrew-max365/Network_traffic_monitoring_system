@@ -202,26 +202,45 @@ void compute_all_risk_scores(Graph *g) {
                            (double)g->nodes[i].out_total / (g->nodes[i].out_total + g->nodes[i].in_total) : 0;
 
         // --- 维度 1：扫描行为（最严重的安全威胁） ---
-        if (g->nodes[i].out_degree > 50 && out_ratio > 0.95) {
-            score += 75; // 确定性扫描源，直接变红
-        } else if (g->nodes[i].out_degree > 20 && out_ratio > 0.7) {
+        if (g->nodes[i].out_degree > 30 && out_ratio > 0.85) {
+            score += 80; // 确定性扫描源，直接变红
+        } else if (g->nodes[i].out_degree > 10 && out_ratio > 0.65) {
             score += 40; // 疑似扫描行为
         }
 
+        for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
+            if (e->session_count >= 15 &&
+                (e->total_bytes / e->session_count) < 500) {
+
+                int penalty = (int)(e->session_count / 2.0);   // 线性动态加分
+                score += penalty;
+
+                // 单项上限80
+                if (score > 80) score = 80;
+                }
+        }
+
         // --- 维度 2：数据泄露风险（异常外发） ---
-        // 外发流量超过 1MB 且 外发比例超过入向 10 倍
-        if (g->nodes[i].out_total > 1048576 && out_ratio > 0.9) {
+        // 1. 先计算全网节点的平均外发流量
+        long total_out_traffic = 0;
+        for (int j = 0; j < g->count; j++) {
+            total_out_traffic += g->nodes[j].out_total;
+        }
+        long avg_out_traffic = total_out_traffic / (g->count > 0 ? g->count : 1);
+
+        // 2. 动态判定：如果该节点外发流量是全网平均水平的 5 倍以上，且外发占比极高
+        // 这样即使抓包时间很长，avg_out_traffic 也会变大，从而维持判定的公平性
+        if (g->nodes[i].out_total > avg_out_traffic * 5 && out_ratio > 0.9) {
             score += 50;
         }
 
         // --- 维度 3：拓扑重要性（攻击影响面） ---
-        // 复用之前的邻居统计逻辑
         int neighbor_count = 0;
         bool neighbor[MAX_NODES] = {false};
         for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
             if (!neighbor[e->dest_idx]) { neighbor[e->dest_idx] = true; neighbor_count++; }
         }
-        if (neighbor_count > 30) {
+        if (neighbor_count > 20) {
             score += 35; // 核心节点，一旦失陷影响极大
         }
 

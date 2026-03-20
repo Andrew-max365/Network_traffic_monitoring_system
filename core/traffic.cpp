@@ -55,7 +55,7 @@ void rank_https_nodes(Graph *g) {
 }
 
 void detect_scanning(Graph *g) {
-    printf("--- 扫描行为检测 (发出流量占比 > 80%%) ---\n");
+    printf("--- 异常行为检测 (发出流量占比 > 80%%) ---\n");
     TrafficRank ranks[MAX_NODES];
     int c_count = 0;
 
@@ -74,7 +74,7 @@ void detect_scanning(Graph *g) {
     }
 
     if (c_count == 0) {
-        printf("未发现明显扫描行为。\n");
+        printf("未发现明显异常行为。\n");
         return;
     }
 
@@ -86,7 +86,7 @@ void detect_scanning(Graph *g) {
         long total = ranks[i].traffic;
         double out_ratio = (double)out_total / (double)total;
 
-        printf("%2d. 可疑扫描源: %-15s | 总流量: %10ld | 发出流量占比: %.2f%%\n",
+        printf("%2d. 可疑IP: %-15s | 总流量: %10ld | 发出流量占比: %.2f%%\n",
                i + 1, g->nodes[idx].ip, total, out_ratio * 100.0);
     }
     printf("总共可疑源共有：%d 个\n", c_count);
@@ -232,69 +232,68 @@ static uint32_t ip_to_uint32(const char *ip_str) {
 // target_ip: 被管控的地址1
 // range_start: 范围起始地址 (地址2)
 // range_end: 范围结束地址 (地址3)
-void check_security_rule(Graph *g) {
-    // 声明字符数组
-    char target_ip[MAX_IP_LEN];
-    char range_start[MAX_IP_LEN];
-    char range_end[MAX_IP_LEN];
+    void check_security_rule(Graph *g) {
+        char target_ip[MAX_IP_LEN];
+        char range_start[MAX_IP_LEN];
+        char range_end[MAX_IP_LEN];
 
-    scanf("%s", target_ip);
-    scanf("%s", range_start);
-    scanf("%s", range_end);
+        // 获取输入：地址1 (受控 IP), 地址2 (范围起点), 地址3 (范围终点)
+        scanf("%s", target_ip);
+        scanf("%s", range_start);
+        scanf("%s", range_end);
 
-    // 将输入的字符串转换成数字形式
-    uint32_t target_ip_num = ip_to_uint32(target_ip);
-    uint32_t start_num = ip_to_uint32(range_start);
-    uint32_t end_num = ip_to_uint32(range_end);
+        uint32_t target_ip_num = ip_to_uint32(target_ip);
+        uint32_t start_num = ip_to_uint32(range_start);
+        uint32_t end_num = ip_to_uint32(range_end);
 
-    // 容错处理：确保 start_num <= end_num
-    if (start_num > end_num) {
-        uint32_t temp = start_num;
-        start_num = end_num;
-        end_num = temp;
+        // 容错：确保 start_num <= end_num
+        if (start_num > end_num) {
+            uint32_t temp = start_num;
+            start_num = end_num;
+            end_num = temp;
+        }
 
-        char temp_str[MAX_IP_LEN];
-        strcpy(temp_str, range_start);
-        strcpy(range_start, range_end);
-        strcpy(range_end, temp_str);
-    }
+        printf("--- 安全规则违规检测 (黑名单模式) ---\n");
+        printf("规则限制: 节点 [%s] 禁止与区间 [%s ~ %s] 发生通信 \n", target_ip, range_start, range_end);
 
-    printf("--- 安全规则违规检测 ---\n");
-    printf("规则限制: 节点 [%s] 禁止与区间 [%s ~ %s] 发生通信\n", target_ip, range_start, range_end);
+        bool found_violation = false;
 
-    bool found_violation = false;
+        // 遍历图中的所有会话（边）
+        for (int i = 0; i < g->count; i++) {
+            uint32_t src_ip_num = ip_to_uint32(g->nodes[i].ip);
 
-    // 2. 遍历全图的所有会话（边）
-    for (int i = 0; i < g->count; i++) {
-        uint32_t src_ip_num = ip_to_uint32(g->nodes[i].ip);
+            for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
+                uint32_t dst_ip_num = ip_to_uint32(g->nodes[e->dest_idx].ip);
 
-        for (EdgeNode *e = g->nodes[i].first_edge; e; e = e->next) {
-            uint32_t dst_ip_num = ip_to_uint32(g->nodes[e->dest_idx].ip);
+                bool is_violation = false;
 
-            bool is_violation = false;
+                // --- 核心逻辑修复 ---
+                // 判定准则：如果会话的一端是 target_ip，而另一端落在 [start, end] 范围内，即为违规
 
-            // 目标IP是源节点，且它向被禁范围发送了数据（主动违规外联）
-            if (src_ip_num == target_ip_num && (dst_ip_num >= start_num && dst_ip_num <= end_num)) {
-                is_violation = true;
-            }
+                // 情况1：target_ip 作为源地址，主动连接了范围内的 IP
+                if (src_ip_num == target_ip_num && (dst_ip_num >= start_num && dst_ip_num <= end_num)) {
+                    is_violation = true;
+                }
+                // 情况2：范围内的 IP 主动连接了作为目的地址的 target_ip
+                else if (dst_ip_num == target_ip_num && (src_ip_num >= start_num && src_ip_num <= end_num)) {
+                    is_violation = true;
+                }
 
-            // 如果发现违规，打印会话详情
-            if (is_violation) {
-                found_violation = true;
-                printf("[!] 违规会话拦截: 源 %-15s -> 目的 %-15s | 流量: %8ld 字节 | 时长: %.2f秒\n",
-                       g->nodes[i].ip,
-                       g->nodes[e->dest_idx].ip,
-                       e->total_bytes,
-                       e->duration);
+                if (is_violation) {
+                    found_violation = true;
+                    printf("[!] 违规会话拦截: %s <-> %s | 流量: %ld 字节 | 时长: %.2f毫秒 \n",
+                           g->nodes[i].ip,
+                           g->nodes[e->dest_idx].ip,
+                           e->total_bytes,
+                           e->duration);
+                }
             }
         }
-    }
 
-    if (!found_violation) {
-        printf("合规检查通过: 未发现违反该安全规则的会话。\n");
+        if (!found_violation) {
+            printf("合规检查通过: 未发现违反黑名单限制的会话 。\n");
+        }
     }
-    printf("\n");
-}
 
 void profile_node_roles(Graph *g) {
     printf("--- 节点类型分析 ---\n");
@@ -374,12 +373,13 @@ void profile_node_roles(Graph *g) {
 
         // 规则3：P2P节点 / 核心路由网关 (Hub)
         // 判定逻辑：进出方向的连接数都比较高，属于网络结构中的交通枢纽
-        else if (in_deg >= 5 && out_deg >= 5) {
+        else if (in_deg >= 10 && out_deg >= 5) {
             strcpy(role, "[+] 核心枢纽节点 (Hub)");
             sprintf(reason, "双向连接活跃 (入:%d, 出:%d)", in_deg, out_deg);
             p2p_count++;
             is_special = true;
         }
+
         // 规则4：普通终端 (Client)
         else {
             client_count++;

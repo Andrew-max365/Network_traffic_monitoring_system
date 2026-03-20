@@ -170,7 +170,7 @@ class SentinelDashboard(ctk.CTk):
         self.viz_btn.pack(fill="x", padx=20, pady=5)
 
         # 创新点按钮：节点类型画像评估 (采用深绿色系)
-        self.profile_btn = ctk.CTkButton(self.sidebar, text="👤 资产角色画像分析", height=45,
+        self.profile_btn = ctk.CTkButton(self.sidebar, text="👤 节点类型分析", height=45,
                                          fg_color="#27AE60", hover_color="#1E8449",
                                          font=ctk.CTkFont(size=15, weight="bold"),
                                          command=lambda: self.execute_command("11", "NODE_PROFILING"))
